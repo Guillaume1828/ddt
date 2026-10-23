@@ -144,6 +144,18 @@
 
   document.getElementById('ddt-print').addEventListener('click', function () { window.print(); });
 
+  // Stampa automatica all'apertura, come il vecchio servizio (si può disattivare aggiungendo noprint=1 al link)
+  if (!/noprint=1/.test(window.location.href)) {
+    var imgs = Array.prototype.slice.call(sheet.querySelectorAll('img'));
+    var waits = imgs.map(function (im) {
+      return im.complete ? Promise.resolve() : new Promise(function (r) { im.addEventListener('load', r); im.addEventListener('error', r); });
+    });
+    var maxWait = new Promise(function (r) { setTimeout(r, 2500); });
+    Promise.race([Promise.all(waits), maxWait]).then(function () {
+      setTimeout(function () { window.print(); }, 600); // lascia a Tailwind il tempo di applicare gli stili
+    });
+  }
+
   var dl = document.getElementById('ddt-download');
   dl.addEventListener('click', function () {
     if (typeof html2pdf === 'undefined') {
