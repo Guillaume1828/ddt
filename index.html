@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DDT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+  :root {
+    --desk: #e7e5e1;
+    --bar: #1f2a37;
+    --bar-text: #f5f6f7;
+    --accent: #c8a24a;
+    --muted: #5b6573;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --desk: #2a2d31; --muted: #b8bfc8; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --desk: #2a2d31; --muted: #b8bfc8; color-scheme: dark; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body { margin: 0; background: var(--desk); }
+  #ddt-bar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+    background: var(--bar); color: var(--bar-text);
+    font: 500 15px/1.3 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #ddt-bar .ddt-title { margin-right: auto; font-weight: 600; letter-spacing: .01em; }
+  #ddt-bar button {
+    font: inherit; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; min-height: 44px;
+  }
+  #ddt-download { background: var(--accent); color: #1b1b1b; font-weight: 600; }
+  #ddt-print { background: transparent; color: var(--bar-text); box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
+  #ddt-bar button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  #ddt-bar button[disabled] { opacity: .6; cursor: progress; }
+  #ddt-status { width: 100%; font-size: 13px; opacity: .85; min-height: 0; }
+  #ddt-sheet {
+    max-width: 210mm; margin: 20px auto calc(28px + env(safe-area-inset-bottom, 0px));
+    background: #fff; color: #000; box-shadow: 0 1px 3px rgba(0,0,0,.18);
+    padding: 12mm; box-sizing: border-box; overflow-x: auto;
+  }
+  #ddt-empty {
+    max-width: 34em; margin: 48px auto; padding: 0 20px; color: var(--muted);
+    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media print {
+    #ddt-bar { display: none !important; }
+    body { background: #fff; }
+    #ddt-sheet { box-shadow: none; margin: 0; max-width: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="ddt-bar" hidden>
+  <span class="ddt-title" id="ddt-title">Documento di trasporto</span>
+  <button id="ddt-download" type="button">Scarica PDF</button>
+  <button id="ddt-print" type="button">Stampa</button>
+  <div id="ddt-status" role="status" aria-live="polite"></div>
+</div>
+<main id="ddt-sheet" hidden></main>
+<p id="ddt-empty" hidden></p>
+
+<script>
+(function () {
+  var sheet = document.getElementById('ddt-sheet');
+  var bar = document.getElementById('ddt-bar');
+  var empty = document.getElementById('ddt-empty');
+  var status = document.getElementById('ddt-status');
+
+  function showEmpty(msg) { empty.textContent = msg; empty.hidden = false; }
+
+  // Il documento arriva nel link come PDF=<html codificato>, dopo # (preferito: non passa da nessun server) o dopo ?
+  function readRaw() {
+    var sources = [window.location.hash, window.location.search];
+    for (var i = 0; i < sources.length; i++) {
+      var s = sources[i] || '';
+      var k = s.indexOf('PDF=');
+      if (k !== -1) return s.substring(k + 4);
+    }
+    return null;
+  }
+
+  function decode(raw) {
+    try { return decodeURIComponent(raw); } catch (e) {}
+    try { return decodeURI(raw); } catch (e) {}
+    return null;
+  }
+
+  // Pulizia: niente script né attributi eseguibili, si mostra solo il documento
+  function sanitize(doc) {
+    doc.querySelectorAll('script, iframe, object, embed, base, meta[http-equiv]').forEach(function (n) { n.remove(); });
+    doc.querySelectorAll('*').forEach(function (el) {
+      Array.prototype.slice.call(el.attributes).forEach(function (a) {
+        var name = a.name.toLowerCase();
+        var val = (a.value || '').trim().toLowerCase();
+        if (name.indexOf('on') === 0) el.removeAttribute(a.name);
+        else if ((name === 'href' || name === 'src' || name === 'xlink:href') && val.indexOf('javascript:') === 0) el.removeAttribute(a.name);
+      });
+    });
+    return doc;
+  }
+
+  var raw = readRaw();
+  if (raw === null || raw === '') {
+    showEmpty('Nessun documento da mostrare. Apri questa pagina con il pulsante «Creare PDF» dell’app.');
+    return;
+  }
+  var html = decode(raw);
+  if (!html) {
+    showEmpty('Il documento non è leggibile: il link è incompleto o troncato. Rigenera il PDF dall’app.');
+    return;
+  }
+
+  var doc = sanitize(new DOMParser().parseFromString(html, 'text/html'));
+  doc.querySelectorAll('head style, head link[rel="stylesheet"]').forEach(function (n) {
+    document.head.appendChild(document.importNode(n, true));
+  });
+  var bodyStyle = doc.body.getAttribute('style');
+  if (bodyStyle) sheet.setAttribute('style', bodyStyle);
+  sheet.innerHTML = doc.body.innerHTML;
+
+  if (!sheet.textContent.trim()) {
+    showEmpty('Il documento è vuoto. Rigenera il PDF dall’app.');
+    return;
+  }
+
+  var match = sheet.textContent.match(/DDT\s*N[°º.o]?\s*(\d+)/i);
+  var num = match ? match[1] : '';
+  var today = new Date().toISOString().slice(0, 10);
+  var fileName = num ? ('DDT_' + num + '_' + today + '.pdf') : ('DDT_' + today + '.pdf');
+  if (num) {
+    document.title = 'DDT N° ' + num;
+    document.getElementById('ddt-title').textContent = 'DDT N° ' + num;
+  }
+
+  sheet.hidden = false;
+  bar.hidden = false;
+
+  document.getElementById('ddt-print').addEventListener('click', function () { window.print(); });
+
+  var dl = document.getElementById('ddt-download');
+  dl.addEventListener('click', function () {
+    if (typeof html2pdf === 'undefined') {
+      status.textContent = 'Download non disponibile senza connessione. Usa «Stampa» e scegli «Salva come PDF».';
+      return;
+    }
+    dl.disabled = true;
+    status.textContent = 'Preparazione del PDF…';
+    html2pdf().set({
+      margin: 8,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(sheet).save().then(function () {
+      status.textContent = 'PDF scaricato: ' + fileName;
+    }).catch(function () {
+      status.textContent = 'Il PDF non è stato generato. Usa «Stampa» e scegli «Salva come PDF».';
+    }).then(function () { dl.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
