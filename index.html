@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DDT</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<!-- I modelli DDT dell'app usano classi Tailwind (py-4, w-full…): le generiamo qui -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
   :root {
     --desk: #e7e5e1;
@@ -115,6 +117,8 @@
 
   var doc = sanitize(new DOMParser().parseFromString(html, 'text/html'));
   doc.querySelectorAll('head style, head link[rel="stylesheet"]').forEach(function (n) {
+    // i fogli di stile relativi (es. style.css) non esistono qui: si ignorano
+    if (n.tagName === 'LINK' && !/^https?:\/\//i.test(n.getAttribute('href') || '')) return;
     document.head.appendChild(document.importNode(n, true));
   });
   var bodyStyle = doc.body.getAttribute('style');
